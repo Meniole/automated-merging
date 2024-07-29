@@ -9,12 +9,14 @@ on the association of the pull-request author.
 - plugin: ubiquibot/automated-merging
   name: automated-merging
   id: automated-merging
-  description: "Automatically merge pull-requests"
+  description: "Automatically merge pull-requests."
   with:
-    collaboratorMinimumApprovalsRequired: 1
-    contributorMinimumApprovalsRequired: 2
-    collaboratorMergeTimeout: "3.5 days"
-    contributorMergeTimeout: "7 days"
+    approvalsRequired:
+      collaborator: 1 # defaults to 1
+      contributor: 2 # defaults to 2
+    mergeTimeout:
+      collaborator: "3.5 days" # defaults to 3.5 days
+      contributor: "7 days" # defaults to 7 days
 ```
 
 ## Testing

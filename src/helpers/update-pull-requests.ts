@@ -1,8 +1,15 @@
 import ms from "ms";
-import { PullRequest } from "../adapters/sqlite/entities/pull-request";
 import { getAllTimelineEvents } from "../handlers/github-events";
 import { Context } from "../types";
-import { getApprovalCount, getMergeTimeoutAndApprovalRequiredCount, isCiGreen, IssueParams, parseGitHubUrl } from "./github";
+import {
+  getApprovalCount,
+  getMergeTimeoutAndApprovalRequiredCount,
+  getOpenPullRequests,
+  getPullRequestDetails,
+  isCiGreen,
+  mergePullRequest,
+  parseGitHubUrl,
+} from "./github";
 
 type IssueEvent = {
   created_at?: string;
@@ -11,37 +18,26 @@ type IssueEvent = {
   commented_at?: string;
 };
 
-async function getPullRequestDetails(context: Context, { repo, owner, issue_number: pullNumber }: IssueParams) {
-  return (
-    await context.octokit.pulls.get({
-      repo,
-      owner,
-      pull_number: pullNumber,
-    })
-  ).data;
-}
-
 export async function updatePullRequests(context: Context) {
-  const pullRequests = await context.adapters.sqlite.pullRequest.getAll();
+  if (!context.config.watch.length) {
+    return context.logger.info("No organizations or repo have been specified, skipping.");
+  }
+
+  const pullRequests = await getOpenPullRequests(context, context.config.watch);
 
   if (!pullRequests?.length) {
     return context.logger.info("Nothing to do.");
   }
-  for (const pullRequest of pullRequests) {
+  for (const { html_url } of pullRequests) {
     try {
-      const gitHubUrl = parseGitHubUrl(pullRequest.url);
+      const gitHubUrl = parseGitHubUrl(html_url);
       const pullRequestDetails = await getPullRequestDetails(context, gitHubUrl);
-      context.logger.debug(`Processing pull-request ${pullRequest.url}...`);
+      context.logger.debug(`Processing pull-request ${html_url}...`);
       if (pullRequestDetails.merged || pullRequestDetails.closed_at) {
-        context.logger.info(`The pull request ${pullRequest.url} is already merged or closed, nothing to do.`);
-        try {
-          await context.adapters.sqlite.pullRequest.delete(pullRequest.url);
-        } catch (e) {
-          context.logger.error(`Failed to delete pull-request ${pullRequest.url}: ${e}`);
-        }
+        context.logger.info(`The pull request ${html_url} is already merged or closed, nothing to do.`);
         continue;
       }
-      const activity = await getAllTimelineEvents(context, parseGitHubUrl(pullRequest.url));
+      const activity = await getAllTimelineEvents(context, parseGitHubUrl(html_url));
       const eventDates: Date[] = activity
         .map((event) => {
           const e = event as IssueEvent;
@@ -56,33 +52,23 @@ export async function updatePullRequests(context: Context) {
         `Requirements according to association ${pullRequestDetails.author_association}: ${JSON.stringify(requirements)} with last activity date: ${lastActivityDate}`
       );
       if (isNaN(lastActivityDate.getTime()) || isPastOffset(lastActivityDate, requirements.mergeTimeout)) {
-        if ((await getApprovalCount(context, gitHubUrl)) > 0) {
+        if ((await getApprovalCount(context, gitHubUrl)) >= requirements.requiredApprovalCount) {
           if (await isCiGreen(context, pullRequestDetails.head.sha, gitHubUrl)) {
-            context.logger.info(`Pull-request ${pullRequest.url} is past its due date (${requirements.mergeTimeout} after ${lastActivityDate}), will merge.`);
-            await mergePullRequest(context, pullRequest, gitHubUrl);
+            context.logger.info(`Pull-request ${html_url} is past its due date (${requirements.mergeTimeout} after ${lastActivityDate}), will merge.`);
+            await mergePullRequest(context, gitHubUrl);
           } else {
-            context.logger.info(`Pull-request ${pullRequest.url} (sha: ${pullRequestDetails.head.sha}) does not pass all CI tests, won't merge.`);
+            context.logger.info(`Pull-request ${html_url} (sha: ${pullRequestDetails.head.sha}) does not pass all CI tests, won't merge.`);
           }
         } else {
-          context.logger.info(`Pull-request ${pullRequest.url} does not have sufficient reviewer approvals to be merged.`);
+          context.logger.info(`Pull-request ${html_url} does not have sufficient reviewer approvals to be merged.`);
         }
       } else {
-        await context.adapters.sqlite.pullRequest.update(pullRequest.url, lastActivityDate);
-        context.logger.info(`Updated PR ${pullRequest.url} to a new timestamp (${lastActivityDate})`);
+        context.logger.info(`PR ${html_url} has activity up until (${lastActivityDate}), nothing to do.`);
       }
     } catch (e) {
-      context.logger.error(`Could not process pull-request ${pullRequest.url} for auto-merge: ${e}`);
+      context.logger.error(`Could not process pull-request ${html_url} for auto-merge: ${e}`);
     }
   }
-}
-
-async function mergePullRequest(context: Context, pullRequest: PullRequest, { repo, owner, issue_number: pullNumber }: IssueParams) {
-  await context.adapters.sqlite.pullRequest.delete(pullRequest.url);
-  await context.octokit.pulls.merge({
-    owner,
-    repo,
-    pull_number: pullNumber,
-  });
 }
 
 function isPastOffset(lastActivityDate: Date, offset: string): boolean {

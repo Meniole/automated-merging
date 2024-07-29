@@ -11,28 +11,45 @@ export interface PluginInputs<T extends SupportedEventsU = SupportedEventsU, TU 
   ref: string;
 }
 
+export const approvalsRequiredSchema = T.Object(
+  {
+    /**
+     * The amount of validations needed to consider a pull-request by a collaborator to be deemed eligible for
+     * merge, defaults to 1.
+     */
+    collaborator: T.Number({ default: 1, minimum: 1 }),
+    /**
+     * The amount of validations needed to consider a pull-request by a contributor to be deemed eligible for merge,
+     * defaults to 2.
+     */
+    contributor: T.Number({ default: 2, minimum: 1 }),
+  },
+  { default: {} }
+);
+
+export const mergeTimeoutSchema = T.Object(
+  {
+    /**
+     * The timespan to wait before merging a collaborator's pull-request, defaults to 3.5 days.
+     */
+    collaborator: T.String({ default: "3.5 days" }),
+    /**
+     * The timespan to wait before merging a contributor's pull-request, defaults to 7 days.
+     */
+    contributor: T.String({ default: "7 days" }),
+  },
+  { default: {} }
+);
+
 export const pluginSettingsSchema = T.Object({
+  approvalsRequired: approvalsRequiredSchema,
+  mergeTimeout: mergeTimeoutSchema,
   /**
-   * The amount of validations needed to consider a pull-request by a collaborator to be deemed eligible for merge
+   * The list of organizations or repositories to watch for updates.
    */
-  collaboratorMinimumApprovalsRequired: T.Number({ default: 1, minimum: 1 }),
-  /**
-   * The amount of validations needed to consider a pull-request by a contributor to be deemed eligible for merge
-   */
-  contributorMinimumApprovalsRequired: T.Number({ default: 1, minimum: 1 }),
-  /**
-   * The timespan to wait before merging a collaborator's pull-request
-   */
-  collaboratorMergeTimeout: T.String({ default: "3.5 days" }),
-  /**
-   * The timespan to wait before merging a contributor's pull-request
-   */
-  contributorMergeTimeout: T.String({ default: "7 days" }),
-  /**
-   * The location of the database
-   */
-  databaseUrl: T.String({ default: "database/sql.db" }),
+  watch: T.Array(T.String({ minLength: 1 }), { default: [] }),
 });
+
 export const pluginSettingsValidator = new StandardValidator(pluginSettingsSchema);
 
 export type PluginSettings = StaticDecode<typeof pluginSettingsSchema>;

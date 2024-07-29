@@ -16,11 +16,6 @@ on:
       ref:
         description: "Ref"
 
-# Limits to one job at a time
-#concurrency:
-#  group: ${{ github.workflow }}
-
-
 jobs:
   compute:
     name: "Automated Merging"
@@ -42,21 +37,6 @@ jobs:
         shell: cat {0}
 
       - name: Execute directive
-        run: npx tsx ./src/main.ts
-        id: automated-merging
-
-      - name: Commit and Push DB updates
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git config --global pull.rebase false
-          git add database/sql.db
-          if [ -n "$(git diff-index --cached --name-only HEAD)" ]; then
-            git commit -m "chore: [skip ci] updated database" || echo "Lint-staged check failed"
-            git pull -X ours
-            git push origin main
-          else
-            echo "No changes to commit"
-          fi
+        uses: ./
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
