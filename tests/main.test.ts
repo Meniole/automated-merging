@@ -60,7 +60,7 @@ describe("Action tests", () => {
           inputs: {
             eventName: "push",
             settings: JSON.stringify({
-              watch: ["ubiquibot/automated-merging"],
+              repos: { monitor: ["ubiquibot/automated-merging"] },
             }),
             eventPayload: JSON.stringify({
               pull_request: {
@@ -98,6 +98,13 @@ describe("Action tests", () => {
           return HttpResponse.json({}, { status: 404 });
         },
         { once: true }
+      ),
+      http.get(
+        "https://api.github.com/repos/:org/:repo/issues/:id/timeline",
+        () => {
+          return HttpResponse.json([{ id: 1, created_at: lastActivityDate }]);
+        },
+        { once: true }
       )
     );
     jest.mock(actionsGithubPackage, () => ({
@@ -112,7 +119,7 @@ describe("Action tests", () => {
           inputs: {
             eventName: "push",
             settings: JSON.stringify({
-              watch: ["ubiquibot/automated-merging"],
+              repos: { monitor: ["ubiquibot/automated-merging"] },
             }),
             eventPayload: JSON.stringify({
               pull_request: {
